@@ -4,6 +4,7 @@ import { manualToggleDebugger } from 'js-slang/dist/stdlib/inspector';
 import { random } from 'lodash';
 import { SagaIterator } from 'redux-saga';
 import { call, delay, put, race, select, take, takeEvery } from 'redux-saga/effects';
+import * as Sourceror from 'sourceror-driver';
 import * as actions from '../actions';
 import * as actionTypes from '../actions/actionTypes';
 import { WorkspaceLocation, WorkspaceLocations } from '../actions/workspaces';
@@ -523,11 +524,13 @@ export function* evalCode(
     result:
       actionType === actionTypes.DEBUG_RESUME
         ? call(resume, lastDebuggerResult)
-        : call(runInContext, code, context, {
+        : !true
+        ? call(runInContext, code, context, {
             scheduler: 'preemptive',
             originalMaxExecTime: execTime,
             useSubst: substActiveAndCorrectChapter
-          }),
+          })
+          : call(wasm_compile_and_run, code),
     /**
      * A BEGIN_INTERRUPT_EXECUTION signals the beginning of an interruption,
      * i.e the trigger for the interpreter to interrupt execution.
@@ -617,6 +620,12 @@ export function* evalCode(
       }
     }
   }
+}
+
+async function wasm_compile_and_run(code: string): Promise<Sourceror.Result> {
+  return Sourceror.compile(code, {}).then((wasmModule: WebAssembly.Module) =>
+    Sourceror.run(wasmModule)
+  );
 }
 
 export function* evalTestCode(
