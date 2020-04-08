@@ -14,6 +14,7 @@ import { Variant } from 'js-slang/dist/types';
 import { random } from 'lodash';
 import { SagaIterator } from 'redux-saga';
 import { call, delay, put, race, select, take, takeEvery } from 'redux-saga/effects';
+import * as Sourceror from 'sourceror-driver';
 import * as actions from '../actions';
 import * as actionTypes from '../actions/actionTypes';
 import { WorkspaceLocation, WorkspaceLocations } from '../actions/workspaces';
@@ -634,6 +635,7 @@ export function* evalCode(
 
   const isNonDet: boolean = context.variant === 'non-det';
   const isLazy: boolean = context.variant === 'lazy';
+  const isWasm: boolean = true; // TODO
 
   const { result, interrupted, paused } = yield race({
     result:
@@ -641,6 +643,8 @@ export function* evalCode(
         ? call(resume, lastDebuggerResult)
         : isNonDet || isLazy
         ? call_variant(context.variant)
+        : isWasm
+        ? call(wasm_compile_and_run, code, context)
         : call(runInContext, code, context, {
             scheduler: 'preemptive',
             originalMaxExecTime: execTime,
@@ -746,6 +750,15 @@ export function* evalCode(
       }
     }
   }
+}
+
+async function wasm_compile_and_run(code: string, context: Context): Promise<Result> {
+  return Sourceror.compile(code, context)
+    .then((wasmModule: WebAssembly.Module) => Sourceror.run(wasmModule, context))
+    .then(
+      (returnedValue: any) => ({ status: 'finished', context, value: returnedValue }),
+      _ => ({ status: 'error' })
+    );
 }
 
 export function* evalTestCode(
